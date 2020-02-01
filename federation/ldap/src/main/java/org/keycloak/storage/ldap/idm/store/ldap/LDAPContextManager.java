@@ -34,7 +34,7 @@ public final class LDAPContextManager implements AutoCloseable {
     private final LDAPConfig ldapConfig;
     private StartTlsResponse tlsResponse;
 
-    private  VaultCharSecret vaultCharSecret = new VaultCharSecret() {
+    private VaultCharSecret vaultCharSecret = new VaultCharSecret() {
         @Override
         public Optional<CharBuffer> get() {
             return Optional.empty();
@@ -69,17 +69,26 @@ public final class LDAPContextManager implements AutoCloseable {
             vaultCharSecret = getVaultSecret();
 
             if (vaultCharSecret != null && !ldapConfig.isStartTls()) {
-                connProp.put(SECURITY_CREDENTIALS, vaultCharSecret.getAsArray()
-                        .orElse(ldapConfig.getBindCredential().toCharArray()));
+                connProp.put(SECURITY_CREDENTIALS,
+                        vaultCharSecret.getAsArray().orElse(ldapConfig.getBindCredential().toCharArray()));
             }
         }
 
         ldapContext = new InitialLdapContext(connProp, null);
         if (ldapConfig.isStartTls()) {
-            tlsResponse = startTLS(ldapContext, ldapConfig.getAuthType(), ldapConfig.getBindDN(),
-                    vaultCharSecret.getAsArray().orElse(ldapConfig.getBindCredential().toCharArray()));
 
-            // Exception should be already thrown by LDAPContextManager.startTLS if "startTLS" could not be established, but rather do some additional check
+            char[] bindCredentials = vaultCharSecret.getAsArray().orElse(ldapConfig.getBindCredential().toCharArray());
+
+            logger.info("IAMLOG-LDAPContextManager : startTLS function param ldapContext:" + ldapContext.toString());
+            logger.info("IAMLOG-LDAPContextManager : startTLS function param authType:" + ldapConfig.getAuthType());
+            logger.info("IAMLOG-LDAPContextManager : startTLS function param bindDN:" + ldapConfig.getBindDN());
+            logger.info(
+                    "IAMLOG-LDAPContextManager : startTLS function param bindCredential:" + bindCredentials.toString());
+
+            tlsResponse = startTLS(ldapContext, ldapConfig.getAuthType(), ldapConfig.getBindDN(), bindCredentials);
+
+            // Exception should be already thrown by LDAPContextManager.startTLS if
+            // "startTLS" could not be established, but rather do some additional check
             if (tlsResponse == null) {
                 throw new NamingException("Wasn't able to establish LDAP connection through StartTLS");
             }
@@ -88,31 +97,40 @@ public final class LDAPContextManager implements AutoCloseable {
     }
 
     public LdapContext getLdapContext() throws NamingException {
-        if (ldapContext == null) createLdapContext();
+        if (ldapContext == null)
+            createLdapContext();
 
         return ldapContext;
     }
 
     private VaultCharSecret getVaultSecret() {
-        return LDAPConstants.AUTH_TYPE_NONE.equals(ldapConfig.getAuthType())
-                ? null
+        return LDAPConstants.AUTH_TYPE_NONE.equals(ldapConfig.getAuthType()) ? null
                 : session.vault().getCharSecret(ldapConfig.getBindCredential());
     }
 
-    public static StartTlsResponse startTLS(LdapContext ldapContext, String authType, String bindDN, char[] bindCredential) throws NamingException {
+    public static StartTlsResponse startTLS(LdapContext ldapContext, String authType, String bindDN,
+            char[] bindCredential) throws NamingException {
         StartTlsResponse tls = null;
 
         try {
-            tls = (StartTlsResponse) ldapContext.extendedOperation(new StartTlsRequest());
+            logger.info("IAMLOG-LDAPContextManager : Entered startTLS function");
+
+            StartTlsRequest tlsRequest = new StartTlsRequest();
+            logger.info("IAMLOG-LDAPContextManager : startTLS Request:" + tlsRequest.toString());
+            tls = (StartTlsResponse) ldapContext.extendedOperation(tlsRequest);
+            logger.info("IAMLOG-LDAPContextManager : Extended ldap Request StartTlsResponse:" + tls.toString());
             tls.negotiate();
+            logger.info("IAMLOG-LDAPContextManager : Finished tls negotiation");
 
             ldapContext.addToEnvironment(Context.SECURITY_AUTHENTICATION, authType);
 
             if (!LDAPConstants.AUTH_TYPE_NONE.equals(authType)) {
+                logger.info("IAMLOG-LDAPContextManager : AUTHTYPE detected:" + authType);
                 ldapContext.addToEnvironment(Context.SECURITY_PRINCIPAL, bindDN);
                 ldapContext.addToEnvironment(Context.SECURITY_CREDENTIALS, bindCredential);
             }
         } catch (Exception e) {
+            logger.error("IAMLOG-LDAPContextManager : Could not negotiate TLS", e);
             logger.error("Could not negotiate TLS", e);
             throw new AuthenticationException("Could not negotiate TLS");
         }
@@ -127,7 +145,7 @@ public final class LDAPContextManager implements AutoCloseable {
     private Hashtable<Object, Object> getConnectionProperties(LDAPConfig ldapConfig) {
         Hashtable<Object, Object> env = getNonAuthConnectionProperties(ldapConfig);
 
-        if(!ldapConfig.isStartTls()) {
+        if (!ldapConfig.isStartTls()) {
             String authType = ldapConfig.getAuthType();
 
             env.put(Context.SECURITY_AUTHENTICATION, authType);
@@ -157,11 +175,12 @@ public final class LDAPContextManager implements AutoCloseable {
         return env;
     }
 
-
     /**
-     * This method is used for admin connection and user authentication. Hence it returns just connection properties NOT related to
-     * authentication (properties like bindType, bindDn, bindPassword). Caller of this method needs to fill auth-related connection properties
-     * based on the fact whether he does admin connection or user authentication
+     * This method is used for admin connection and user authentication. Hence it
+     * returns just connection properties NOT related to authentication (properties
+     * like bindType, bindDn, bindPassword). Caller of this method needs to fill
+     * auth-related connection properties based on the fact whether he does admin
+     * connection or user authentication
      *
      * @param ldapConfig
      * @return
@@ -226,7 +245,8 @@ public final class LDAPContextManager implements AutoCloseable {
 
     @Override
     public void close() {
-        if (vaultCharSecret != null) vaultCharSecret.close();
+        if (vaultCharSecret != null)
+            vaultCharSecret.close();
         if (tlsResponse != null) {
             try {
                 tlsResponse.close();
