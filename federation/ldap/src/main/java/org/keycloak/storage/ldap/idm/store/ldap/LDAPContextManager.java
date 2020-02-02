@@ -82,13 +82,12 @@ public final class LDAPContextManager implements AutoCloseable {
             logger.info("IAMLOG-LDAPContextManager : startTLS function param authType:" + ldapConfig.getAuthType());
             logger.info("IAMLOG-LDAPContextManager : startTLS function param bindDN:" + ldapConfig.getBindDN());
             logger.info("IAMLOG-LDAPContextManager : startTLS function param vaultCharSecret:" + vaultCharSecret);
-            logger.info("IAMLOG-LDAPContextManager : startTLS function param bindCredential:"
-                    + ldapConfig.getBindCredential());
 
-            char[] bindCredentials = vaultCharSecret.getAsArray().orElse(ldapConfig.getBindCredential().toCharArray());
+            String bindCredentialStr = ldapConfig.getBindCredential() != null ? ldapConfig.getBindCredential() : "";
+            logger.info("IAMLOG-LDAPContextManager : startTLS function param bindCredentialLength:"
+                    + bindCredentialStr.length());
 
-            logger.info(
-                    "IAMLOG-LDAPContextManager : startTLS function param bindCredential:" + bindCredentials.toString());
+            char[] bindCredentials = vaultCharSecret.getAsArray().orElse(bindCredentialStr.toCharArray());
 
             tlsResponse = startTLS(ldapContext, ldapConfig.getAuthType(), ldapConfig.getBindDN(), bindCredentials);
 
